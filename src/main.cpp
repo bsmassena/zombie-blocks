@@ -212,6 +212,28 @@ bool spheres_instersect(glm::vec4 sphere1_center, float sphere1_radius, glm::vec
     return distance < (sphere1_radius + sphere2_radius);
 }
 
+glm::vec4 get_intersection_point(glm::vec4 line_point, glm::vec4 line_vector, glm::vec4 vertex_a,
+                                   glm::vec4 vertex_b, glm::vec4 vertex_c) {
+    glm::vec4 quadrilateral_normal = crossproduct(vertex_b - vertex_a, vertex_c - vertex_a);
+    float t = dotproduct(quadrilateral_normal, vertex_a - line_point) / dotproduct(quadrilateral_normal, line_vector);
+    return line_point + (t * line_vector);
+}
+
+// Only works if all the internal angles equals 90 degrees
+bool is_inside_quadrilateral(glm::vec4 a, glm::vec4 b, glm::vec4 c, glm::vec4 d, glm::vec4 point) {
+    bool first = dotproduct(b - a, point - a) >= 0;
+    bool second = dotproduct(c - b, point - b) >= 0;
+    bool third = dotproduct(d - c, point - c) >= 0;
+    bool fourth = dotproduct(a - d, point - d) >= 0;
+    return first && second && third && fourth;
+}
+
+bool line_intersects_quadrilateral(glm::vec4 line_point, glm::vec4 line_vector, glm::vec4 vertex_a,
+                                   glm::vec4 vertex_b, glm::vec4 vertex_c, glm::vec4 vertex_d) {
+    glm::vec4 intersection_point = get_intersection_point(line_point, line_vector, vertex_a, vertex_b, vertex_c);
+    // printf("Intersection point: %f, %f, %f\n", intersection_point.x, intersection_point.y, intersection_point.z);
+    return is_inside_quadrilateral(vertex_a, vertex_b, vertex_c, vertex_d, intersection_point);
+}
 
 int main(int argc, char* argv[])
 {

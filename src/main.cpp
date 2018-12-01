@@ -206,6 +206,13 @@ GLint bbox_max_uniform;
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
 
+bool spheres_instersect(glm::vec4 sphere1_center, float sphere1_radius, glm::vec4 sphere2_center, float sphere2_radius) {
+    glm::vec4 distance_vector = sphere1_center - sphere2_center;
+    float distance = sqrt(pow(distance_vector.x, 2) + pow(distance_vector.y, 2) + pow(distance_vector.z, 2));
+    return distance < (sphere1_radius + sphere2_radius);
+}
+
+
 int main(int argc, char* argv[])
 {
     // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do

@@ -268,11 +268,11 @@ bool line_intersects_cilider(glm::vec4 line_point, glm::vec4 line_vector, glm::v
 
     float t1 = (part5 + part6 + delta) / part7;
     glm::vec4 intersection = line_point + t1 * line_vector;
-    if(intersection.y <= cilinter_point.y + cilinter_height) return true;
+    if((intersection.y <= cilinter_point.y + cilinter_height) && intersection.y >= cilinter_point.y) return true;
 
     float t2 = (part5 + part6 - delta) / part7;
     intersection = line_point + t2 * line_vector;
-    return intersection.y <= cilinter_point.y + cilinter_height;
+    return (intersection.y <= cilinter_point.y + cilinter_height) && intersection.y >= cilinter_point.y;
 }
 
 // Game definitions

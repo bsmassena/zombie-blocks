@@ -288,9 +288,12 @@ bool d_hold = false;
 bool paused = false;
 bool created = false;
 bool shot = false;
+bool dead = false;
+double last_zombie_created = glfwGetTime();
+double create_interval = 1.0f;
 
 float norm2(glm::vec2 v);
-void createZombies(int n);
+void createZombie();
 void updateZombies();
 void updateBullets();
 void testBulletZombieCollision();
@@ -302,6 +305,7 @@ glm::vec4 bezier (glm::vec4 p1, glm::vec4 p2, glm::vec4 p3, glm::vec4 p4, float 
 #define BOX    3
 #define M4     4
 #define FIRE   5
+#define WALL   6
 
 struct Bullet
 {
@@ -368,6 +372,8 @@ struct Zombie
     float angle;
     double last_update;
     bool alive;
+    int life;
+    int hit_by;
     glm::vec2 direction;
 
     glm::vec3 head_scale = glm::vec3(0.6f, 0.6f, 0.6f);
@@ -383,6 +389,22 @@ struct Zombie
         direction = direction / norm2(direction);
         angle = 1.57 - atan2(direction.y, direction.x);
         alive = true;
+        life = 2;
+        hit_by = -1;
+    }
+
+    void bodyshot(int bullet) {
+        if (bullet != hit_by)
+            life -= 1;
+        if (life <= 0)
+            alive = false;
+        else
+            hit_by = bullet;
+    }
+
+    void headshot() {
+        life -= 2;
+        alive = false;
     }
 
     float getBodyHeight() {
@@ -472,10 +494,16 @@ struct Zombie
         double time_diff = now - last_update;
         last_update = now;
 
-        if (distance > 1.0 && !paused) {
-            x += time_diff * direction.x;
-            z += time_diff * direction.y;
+        if (distance > 1.0 && !dead) {
+            if (!paused) {
+                x += time_diff * direction.x;
+                z += time_diff * direction.y;
+            }
+        } else {
+            dead = true;
+            paused = true;
         }
+
 
         draw();
     }
@@ -546,6 +574,8 @@ struct Zombie
     }
 };
 std::vector<Zombie> zombies;
+
+
 
 int main(int argc, char* argv[])
 {
@@ -624,10 +654,10 @@ int main(int argc, char* argv[])
 
     // Carregamos duas imagens para serem utilizadas como textura
     LoadTextureImage("../../data/tc-earth_daymap_surface.jpg");      // TextureImage0
-    LoadTextureImage("../../data/tc-earth_nightmap_citylights.gif"); // TextureImage1
-    LoadTextureImage("../../data/floor.jpg"); // TextureImage2
+    LoadTextureImage("../../data/floor.jpg"); // TextureImage1
+    LoadTextureImage("../../data/wall.png"); // TextureImage2
     LoadTextureImage("../../data/m4.png"); // TextureM4
-    LoadTextureImage("../../data/fire.png"); // TextureFire
+    LoadTextureImage("../../data/floor.jpg"); // TextureFire
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
     ObjModel spheremodel("../../data/sphere.obj");
@@ -674,6 +704,7 @@ int main(int argc, char* argv[])
     glm::mat4 the_view;
 
     srand (time(NULL));
+    zombies.reserve(1000);
 
     // Ficamos em loop, renderizando, até que o usuário feche a janela
     while (!glfwWindowShouldClose(window))
@@ -721,6 +752,18 @@ int main(int argc, char* argv[])
             }
         }
 
+        float field_limit = FIELD_SIZE - 0.5f;
+
+        if (dx > field_limit)
+            dx = field_limit;
+        if (dx < -field_limit)
+            dx = -field_limit;
+        if (dz > field_limit)
+            dz = field_limit;
+        if (dz < -field_limit)
+            dz = -field_limit;
+
+
         // Computamos a posição da câmera utilizando coordenadas esféricas.  As
         // variáveis g_CameraDistance, g_CameraPhi, e g_CameraTheta são
         // controladas pelo mouse do usuário. Veja as funções CursorPosCallback()
@@ -739,7 +782,7 @@ int main(int argc, char* argv[])
         glm::vec4 camera_view_vector = camera_lookat_l - camera_position_c; // Vetor "view", sentido para onde a câmera está virada
         glm::vec4 camera_up_vector   = glm::vec4(0.0f,1.0f,0.0f,0.0f); // Vetor "up" fixado para apontar para o "céu" (eito Y global)
 
-        if (paused) {
+        if (paused || dead) {
             glm::vec4 p1 = glm::vec4( 0.0f, 20.0f,  45.0f, 1.0f);
             glm::vec4 p2 = glm::vec4(45.0f, 20.0f,  45.0f, 1.0f);
             glm::vec4 p3 = glm::vec4(45.0f, 20.0f, -45.0f, 1.0f);
@@ -783,6 +826,10 @@ int main(int argc, char* argv[])
             projection = Matrix_Orthographic(l, r, b, t, nearplane, farplane);
         }
 
+        if (paused) {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+
         glm::mat4 model = Matrix_Identity(); // Transformação identidade de modelagem
 
         // Enviamos as matrizes "view" e "projection" para a placa de vídeo
@@ -797,6 +844,36 @@ int main(int argc, char* argv[])
         glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(object_id_uniform, PLANE);
         DrawVirtualObject("plane");
+
+        if (!paused && !dead) {
+            model = Matrix_Translate(20.0f,-1.1f,0.0f)
+                  * Matrix_Scale(FIELD_SIZE, FIELD_SIZE, FIELD_SIZE)
+                  * Matrix_Rotate_Z(1.57f);
+            glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+            glUniform1i(object_id_uniform, WALL);
+            DrawVirtualObject("plane");
+
+            model = Matrix_Translate(-20.0f,-1.1f,0.0f)
+                  * Matrix_Scale(FIELD_SIZE, FIELD_SIZE, FIELD_SIZE)
+                  * Matrix_Rotate_Z(-1.57f);
+            glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+            glUniform1i(object_id_uniform, WALL);
+            DrawVirtualObject("plane");
+
+            model = Matrix_Translate(0.0f,-1.1f,20.0f)
+                  * Matrix_Scale(FIELD_SIZE, FIELD_SIZE, FIELD_SIZE)
+                  * Matrix_Rotate_X(-1.57f);
+            glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+            glUniform1i(object_id_uniform, WALL);
+            DrawVirtualObject("plane");
+
+            model = Matrix_Translate(0.0f,-1.1f,-20.0f)
+                  * Matrix_Scale(FIELD_SIZE, FIELD_SIZE, FIELD_SIZE)
+                  * Matrix_Rotate_X(1.57f);
+            glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+            glUniform1i(object_id_uniform, WALL);
+            DrawVirtualObject("plane");
+        }
 
         // Desenhamos a arma (posição fixa na tela)
         float weapon_offset_x = 0.05;
@@ -827,9 +904,11 @@ int main(int argc, char* argv[])
 
         if (!paused) {
 
-            if (!created) {
-                createZombies(10);
-                created = true;
+            double now = glfwGetTime();
+            if (now - last_zombie_created - create_interval > 0) {
+                createZombie();
+                last_zombie_created = now;
+                create_interval *= 0.95;
             }
 
             if (shot) {
@@ -860,8 +939,6 @@ int main(int argc, char* argv[])
         }
         updateBullets();
         updateZombies();
-
-        printf("%.2f, %.2f\n", x, z);
 
         // Pegamos um vértice com coordenadas de modelo (0.5, 0.5, 0.5, 1) e o
         // passamos por todos os sistemas de coordenadas armazenados nas
@@ -1986,16 +2063,23 @@ float norm2(glm::vec2 v) {
     return sqrt( vx*vx + vy*vy );
 }
 
-void createZombies(int n) {
+void createZombie() {
     float x, y;
-    zombies.clear();
-    zombies.reserve(n);
 
-    for (int i = 0; i < n; i++) {
-        x = (rand() % 21) - 10.0;
-        y = (rand() % 21) - 10.0;
-        zombies.push_back(Zombie(x,y));
+    if (rand() % 2) {
+        x = 19.5f;
+        y = 19.5f;
+    } else {
+        x = -19.5f;
+        y = -19.5f;
     }
+
+    if (rand() % 2) {
+        x = (rand() % 20) - 10.0;
+    } else {
+        y = (rand() % 20) - 10.0;
+    }
+    zombies.push_back(Zombie(x,y));
 }
 
 void updateZombies() {
@@ -2037,10 +2121,13 @@ void testBulletZombieCollision() {
                                                   p1, p2, p6, p5,
                                                   p1, p4, p8, p5,
                                                   p5, p6, p7, p8,
-                                                  line_point, line_vec)
-                || line_intersects_cilider(line_point, line_vec, zombie_pos, 0.3f, zombies[j].getBodyHeight())) {
-                                                      zombies[j].alive = false;
-                                                  }
+                                                  line_point, line_vec)) {
+                    zombies[j].headshot();
+                }
+
+                if (line_intersects_cilider(line_point, line_vec, zombie_pos, 0.3f, zombies[j].getBodyHeight())) {
+                    zombies[j].bodyshot(i);
+                }
             }
         }
     }

@@ -25,6 +25,7 @@ uniform mat4 projection;
 #define BOX    3
 #define M4     4
 #define FIRE   5
+#define WALL   6
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
@@ -37,6 +38,7 @@ uniform sampler2D TextureImage1;
 uniform sampler2D TextureImage2;
 uniform sampler2D TextureM4;
 uniform sampler2D TextureFire;
+uniform sampler2D TextureWall;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -129,7 +131,7 @@ void main()
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
         U = fract(p.z / 2);
         V = fract(p.x / 2);
-        Kd0 = texture(TextureImage2, vec2(U,V)).rgba;
+        Kd0 = texture(TextureImage1, vec2(U,V)).rgba;
     } else if ( object_id == BOX ) {
         U = 0.0f;
         V = 0.0f;
@@ -142,7 +144,16 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
         Kd0 = vec4(1.0,0.5,0.0,0.0);
-    }
+    } else if ( object_id == WALL) {
+        if (p.z >= 20.0f || p.z <= -20.0f) {
+            U = fract(p.x / 2);
+            V = fract(p.y / 2);
+        } else {
+            U = fract(p.z / 2);
+            V = fract(p.y / 2);
+        }
+        Kd0 = texture(TextureImage2, vec2(U,V)).rgba;
+    } 
 
     float lambert = max(0,dot(n,l));
 

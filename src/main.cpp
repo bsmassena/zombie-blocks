@@ -212,6 +212,54 @@ bool spheres_instersect(glm::vec4 sphere1_center, float sphere1_radius, glm::vec
     return distance < (sphere1_radius + sphere2_radius);
 }
 
+glm::vec4 get_intersection_point(glm::vec4 line_point, glm::vec4 line_vector, glm::vec4 vertex_a,
+                                   glm::vec4 vertex_b, glm::vec4 vertex_c) {
+    glm::vec4 quadrilateral_normal = crossproduct(vertex_b - vertex_a, vertex_c - vertex_a);
+    float t = dotproduct(quadrilateral_normal, vertex_a - line_point) / dotproduct(quadrilateral_normal, line_vector);
+    return line_point + (t * line_vector);
+}
+
+// Only works if all the internal angles equals 90 degrees
+bool is_inside_quadrilateral(glm::vec4 a, glm::vec4 b, glm::vec4 c, glm::vec4 d, glm::vec4 point) {
+    bool first = dotproduct(b - a, point - a) >= 0;
+    bool second = dotproduct(c - b, point - b) >= 0;
+    bool third = dotproduct(d - c, point - c) >= 0;
+    bool fourth = dotproduct(a - d, point - d) >= 0;
+    return first && second && third && fourth;
+}
+
+bool line_intersects_quadrilateral(glm::vec4 line_point, glm::vec4 line_vector, glm::vec4 vertex_a,
+                                   glm::vec4 vertex_b, glm::vec4 vertex_c, glm::vec4 vertex_d) {
+    glm::vec4 intersection_point = get_intersection_point(line_point, line_vector, vertex_a, vertex_b, vertex_c);
+    // printf("Intersection point: %f, %f, %f\n", intersection_point.x, intersection_point.y, intersection_point.z);
+    return is_inside_quadrilateral(vertex_a, vertex_b, vertex_c, vertex_d, intersection_point);
+}
+
+bool line_intersects_parallelepiped(glm::vec4 face1_v1, glm::vec4 face1_v2, glm::vec4 face1_v3, glm::vec4 face1_v4,
+                                    glm::vec4 face2_v1, glm::vec4 face2_v2, glm::vec4 face2_v3, glm::vec4 face2_v4,
+                                    glm::vec4 face3_v1, glm::vec4 face3_v2, glm::vec4 face3_v3, glm::vec4 face3_v4,
+                                    glm::vec4 face4_v1, glm::vec4 face4_v2, glm::vec4 face4_v3, glm::vec4 face4_v4,
+                                    glm::vec4 face5_v1, glm::vec4 face5_v2, glm::vec4 face5_v3, glm::vec4 face5_v4,
+                                    glm::vec4 face6_v1, glm::vec4 face6_v2, glm::vec4 face6_v3, glm::vec4 face6_v4,
+                                    glm::vec4 line_point, glm::vec4 line_vector) {
+    bool has_intersection = line_intersects_quadrilateral(line_point, line_vector, face1_v1, face1_v2, face1_v3, face1_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face2_v1, face2_v2, face2_v3, face2_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face3_v1, face3_v2, face3_v3, face3_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face4_v1, face4_v2, face4_v3, face4_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face5_v1, face5_v2, face5_v3, face5_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face6_v1, face6_v2, face6_v3, face6_v4);
+    return has_intersection;
+}
 
 int main(int argc, char* argv[])
 {

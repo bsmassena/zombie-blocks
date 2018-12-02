@@ -18,6 +18,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
+#include <ctime>
 
 // Headers abaixo são específicos de C++
 #include <map>
@@ -76,7 +78,6 @@ struct ObjModel
         printf("OK.\n");
     }
 };
-
 
 // Declaração de funções utilizadas para pilha de matrizes de modelagem.
 void PushMatrix(glm::mat4 M);
@@ -168,16 +169,6 @@ float g_CameraTheta = 0.0f; // Ângulo no plano ZX em relação ao eixo Z
 float g_CameraPhi = 0.0f;   // Ângulo em relação ao eixo Y
 float g_CameraDistance = 0.01f; // Distância da câmera para a origem
 
-float dx = 0.0f;
-float dy = 0.0f;
-float dz = 0.0f;
-
-bool w_hold = false;
-bool a_hold = false;
-bool s_hold = false;
-bool d_hold = false;
-bool mouse_enabled = false;
-
 // Variáveis que controlam rotação do antebraço
 float g_ForearmAngleZ = 0.0f;
 float g_ForearmAngleX = 0.0f;
@@ -205,6 +196,133 @@ GLint bbox_max_uniform;
 
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
+
+// Game definitions
+
+float dx = 0.0f;
+float dy = 0.0f;
+float dz = 0.0f;
+
+bool w_hold = false;
+bool a_hold = false;
+bool s_hold = false;
+bool d_hold = false;
+bool mouse_enabled = false;
+bool created = false;
+
+float norm2(glm::vec2 v);
+void createZombies(int n);
+void updateZombies();
+
+#define SPHERE 0
+#define BUNNY  1
+#define PLANE  2
+#define BOX    3
+#define M4     4
+#define FIRE   5
+
+struct Zombie
+{
+    float x;
+    float z;
+    float angle;
+    double last_update;
+    glm::vec2 direction;
+
+    Zombie(float xi, float yi) {
+        x = xi;
+        z = yi;
+        last_update = glfwGetTime();
+        direction = glm::vec2(dx, dz) - glm::vec2(x, z);
+        direction = direction / norm2(direction);
+        angle = 1.57 -atan2(direction.y, direction.x);
+    }
+
+    void Update() {
+        direction = glm::vec2(dx, dz) - glm::vec2(x, z);
+        float distance = norm2(direction);
+        direction /= distance;
+        angle = 1.57 -atan2(direction.y, direction.x);
+        double now = glfwGetTime();
+        double time_diff = now - last_update;
+        last_update = now;
+
+        if (distance > 1.0) {
+            x += time_diff * direction.x;
+            z += time_diff * direction.y;
+        }
+
+        drawZombie();
+    }
+
+    void drawZombie() {
+        glm::mat4 model = Matrix_Identity();
+        glm::vec2 direction = glm::vec2(dx, dz) - glm::vec2(x, z);
+        float zombie_angle = 1.57 -atan2(direction.y, direction.x);
+
+        float box_size = 0.5f;
+        float floor_height = -1.1f;
+
+        glm::vec3 head_scale = glm::vec3(0.6f, 0.6f, 0.6f);
+        glm::vec3 body_scale = glm::vec3(0.5f, 0.8f, 0.35f);
+        glm::vec3 arm_scale = glm::vec3(0.2f, 1.0f, 0.2f);
+        glm::vec3 leg_scale = glm::vec3(0.2f, 1.0f, 0.2f);
+
+        // Pernas
+        model = Matrix_Translate(x + sin(1.57-zombie_angle) * box_size * (leg_scale.x/2 + 0.01), box_size * leg_scale.y/2 + floor_height, z - cos(1.57-zombie_angle) * box_size * (leg_scale.x/2 + 0.01))
+            * Matrix_Scale(leg_scale.x, leg_scale.y, leg_scale.z)
+            * Matrix_Rotate_Y(zombie_angle)
+            ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, BOX);
+        DrawVirtualObject("box");
+
+        model = Matrix_Translate(x - sin(1.57-zombie_angle) * box_size * (leg_scale.x/2 + 0.01), box_size * leg_scale.y/2 + floor_height, z + cos(1.57-zombie_angle) * box_size * (leg_scale.x/2 + 0.01))
+            * Matrix_Scale(leg_scale.x, leg_scale.y, leg_scale.z)
+            * Matrix_Rotate_Y(zombie_angle)
+            ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, BOX);
+        DrawVirtualObject("box");
+
+        // Torso
+        model = Matrix_Translate(x, box_size * (leg_scale.y + body_scale.y/2) + floor_height, z)
+            * Matrix_Rotate_Y(zombie_angle)
+            * Matrix_Scale(body_scale.x, body_scale.y, body_scale.z)
+            ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, BOX);
+        DrawVirtualObject("box");
+
+        // Braços
+        model = Matrix_Translate(x + sin(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2), box_size * (leg_scale.y + body_scale.y - arm_scale.y/2) + floor_height, -cos(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2) + z)
+            * Matrix_Scale(arm_scale.x, arm_scale.y, arm_scale.z)
+            * Matrix_Rotate_Y(zombie_angle)
+            ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, BOX);
+        DrawVirtualObject("box");
+
+        model = Matrix_Translate(x - sin(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2), box_size * (leg_scale.y + body_scale.y - arm_scale.y/2) + floor_height, cos(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2) + z)
+            * Matrix_Scale(arm_scale.x, arm_scale.y, arm_scale.z)
+            * Matrix_Rotate_Y(zombie_angle)
+            ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, BOX);
+        DrawVirtualObject("box");
+
+        // Cabeça
+        model = Matrix_Translate(x, box_size * (leg_scale.y + body_scale.y + head_scale.y/2) + floor_height, z)
+            * Matrix_Scale(head_scale.x, head_scale.y, head_scale.z)
+            * Matrix_Rotate_Y(zombie_angle)
+            ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, BOX);
+        DrawVirtualObject("box");
+    }
+};
+
+std::vector<Zombie> zombies;
 
 int main(int argc, char* argv[])
 {
@@ -285,6 +403,8 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/tc-earth_daymap_surface.jpg");      // TextureImage0
     LoadTextureImage("../../data/tc-earth_nightmap_citylights.gif"); // TextureImage1
     LoadTextureImage("../../data/floor.jpg"); // TextureImage2
+    LoadTextureImage("../../data/m4.png"); // TextureM4
+    LoadTextureImage("../../data/fire.png"); // TextureFire
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
     ObjModel spheremodel("../../data/sphere.obj");
@@ -302,6 +422,10 @@ int main(int argc, char* argv[])
     ObjModel box("../../data/box.obj");
     ComputeNormals(&box);
     BuildTrianglesAndAddToVirtualScene(&box);
+
+    ObjModel m4("../../data/m4.obj");
+    ComputeNormals(&m4);
+    BuildTrianglesAndAddToVirtualScene(&m4);
 
     if ( argc > 1 )
     {
@@ -325,6 +449,8 @@ int main(int argc, char* argv[])
     glm::mat4 the_projection;
     glm::mat4 the_model;
     glm::mat4 the_view;
+
+    srand (time(NULL));
 
     // Ficamos em loop, renderizando, até que o usuário feche a janela
     while (!glfwWindowShouldClose(window))
@@ -397,7 +523,7 @@ int main(int argc, char* argv[])
 
         // Note que, no sistema de coordenadas da câmera, os planos near e far
         // estão no sentido negativo! Veja slides 190-193 do documento "Aula_09_Projecoes.pdf".
-        float nearplane = -0.1f;  // Posição do "near plane"
+        float nearplane = -0.01f;  // Posição do "near plane"
         float farplane  = -100.0f; // Posição do "far plane"
 
         if (g_UsePerspectiveProjection)
@@ -429,26 +555,6 @@ int main(int argc, char* argv[])
         glUniformMatrix4fv(view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
         glUniformMatrix4fv(projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
 
-        #define SPHERE 0
-        #define BUNNY  1
-        #define PLANE  2
-
-        // Desenhamos o modelo da esfera
-        model = Matrix_Translate(-1.0f,0.0f,0.0f)
-              * Matrix_Rotate_Z(0.6f)
-              * Matrix_Rotate_X(0.2f)
-              * Matrix_Rotate_Y(g_AngleY + (float)glfwGetTime() * 0.1f);
-        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(object_id_uniform, SPHERE);
-        DrawVirtualObject("sphere");
-
-        // Desenhamos o modelo do coelho
-        model = Matrix_Translate(1.0f,0.0f,0.0f)
-              * Matrix_Rotate_X(g_AngleX + (float)glfwGetTime() * 0.1f);
-        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(object_id_uniform, BUNNY);
-        DrawVirtualObject("bunny");
-
         // Desenhamos o plano do chão
         model = Matrix_Translate(0.0f,-1.1f,0.0f)
               * Matrix_Scale(FIELD_SIZE, FIELD_SIZE, FIELD_SIZE);
@@ -456,11 +562,49 @@ int main(int argc, char* argv[])
         glUniform1i(object_id_uniform, PLANE);
         DrawVirtualObject("plane");
 
-        // Desenhamos o plano do chão
-        model = Matrix_Translate(0.0f,-1.1f,0.0f);
+        // Desenhamos a arma (posição fixa na tela)
+        float weapon_offset_x = 0.05;
+        float weapon_offset_y = 0.15;
+        float weapon_offset_z = 0.1;
+        float gun_pos_x = x + camera_view_vector.x * 100 * weapon_offset_z -camera_view_vector.z * 100 * weapon_offset_x + weapon_offset_x*(1-(cos(g_CameraPhi)))*cos(g_CameraTheta) -weapon_offset_y*sin(g_CameraPhi)*(-sin(g_CameraTheta));
+        float gun_pos_y = y + camera_view_vector.y * 100 * weapon_offset_z - weapon_offset_y * cos(g_CameraPhi);
+        float gun_pos_z = z + camera_view_vector.z * 100 * weapon_offset_z + camera_view_vector.x * 100 * weapon_offset_x + weapon_offset_x*(1-(cos(g_CameraPhi)))*(-sin(g_CameraTheta)) -weapon_offset_y*sin(g_CameraPhi)*(-cos(g_CameraTheta));
+        model = Matrix_Translate(gun_pos_x, gun_pos_y, gun_pos_z)
+              * Matrix_Scale(0.4f,0.4f,0.4f)
+              * Matrix_Rotate_Y(3.14 + g_CameraTheta - 1.57)
+              * Matrix_Rotate_Z(-g_CameraPhi)
+              * Matrix_Rotate_Y(-0.05f)
+              ;
         glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(object_id_uniform, PLANE);
-        DrawVirtualObject("box");
+        glUniform1i(object_id_uniform, M4);
+        DrawVirtualObject("Bolt_Cylinder.002");
+
+        if (!created) {
+            createZombies(10);
+            created = true;
+        }
+
+        updateZombies();
+
+        if (g_LeftMouseButtonPressed) {
+            float tracer_offset_x = 0.1f;
+            float tracer_offset_y = 0.075f;
+            float tracer_offset_z = 0.2f;
+
+            float tracer_pos_x = x + camera_view_vector.x * 300 * tracer_offset_z -camera_view_vector.z * 100 * tracer_offset_x + tracer_offset_x*(1-(cos(g_CameraPhi)))*cos(g_CameraTheta) -tracer_offset_y*sin(g_CameraPhi)*(-sin(g_CameraTheta));
+            float tracer_pos_y = y + camera_view_vector.y * 300 * tracer_offset_z - tracer_offset_y * cos(g_CameraPhi);
+            float tracer_pos_z = z + camera_view_vector.z * 300 * tracer_offset_z + camera_view_vector.x * 100 * tracer_offset_x + tracer_offset_x*(1-(cos(g_CameraPhi)))*(-sin(g_CameraTheta)) -tracer_offset_y*sin(g_CameraPhi)*(-cos(g_CameraTheta));
+
+            model = Matrix_Translate(tracer_pos_x, tracer_pos_y, tracer_pos_z)
+                  * Matrix_Rotate_Y(3.14 + g_CameraTheta - 1.57)
+                  * Matrix_Rotate_Z(-g_CameraPhi + 1.57)
+                  * Matrix_Rotate_Y(-0.05f)
+                  * Matrix_Scale(0.005f, 1.0f, 0.005f)
+                  ;
+            glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+            glUniform1i(object_id_uniform, FIRE);
+            DrawVirtualObject("box");
+        }
 
         // Pegamos um vértice com coordenadas de modelo (0.5, 0.5, 0.5, 1) e o
         // passamos por todos os sistemas de coordenadas armazenados nas
@@ -635,6 +779,8 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(program_id, "TextureImage0"), 0);
     glUniform1i(glGetUniformLocation(program_id, "TextureImage1"), 1);
     glUniform1i(glGetUniformLocation(program_id, "TextureImage2"), 2);
+    glUniform1i(glGetUniformLocation(program_id, "TextureM4"), 3);
+    glUniform1i(glGetUniformLocation(program_id, "TextureFire"), 4);
     glUseProgram(0);
 }
 
@@ -1575,3 +1721,27 @@ void PrintObjModelInfo(ObjModel* model)
 // set makeprg=cd\ ..\ &&\ make\ run\ >/dev/null
 // vim: set spell spelllang=pt_br :
 
+float norm2(glm::vec2 v) {
+    float vx = v.x;
+    float vy = v.y;
+
+    return sqrt( vx*vx + vy*vy );
+}
+
+void createZombies(int n) {
+    float x, y;
+    zombies.clear();
+    zombies.reserve(n);
+
+    for (int i = 0; i < n; i++) {
+        x = (rand() % 21) - 10.0;
+        y = (rand() % 21) - 10.0;
+        zombies.push_back(Zombie(x,y));
+    }
+}
+
+void updateZombies() {
+    for (size_t i = 0; i < zombies.size(); i++) {
+        zombies[i].Update();
+    }
+}

@@ -22,6 +22,9 @@ uniform mat4 projection;
 #define SPHERE 0
 #define BUNNY  1
 #define PLANE  2
+#define BOX    3
+#define M4     4
+#define FIRE   5
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
@@ -32,9 +35,11 @@ uniform vec4 bbox_max;
 uniform sampler2D TextureImage0;
 uniform sampler2D TextureImage1;
 uniform sampler2D TextureImage2;
+uniform sampler2D TextureM4;
+uniform sampler2D TextureFire;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
-out vec3 color;
+out vec4 color;
 
 // Constantes
 #define M_PI   3.14159265358979323846
@@ -68,66 +73,84 @@ void main()
     float U = 0.0;
     float V = 0.0;
 
-    if ( object_id == SPHERE )
-    {
-        // PREENCHA AQUI as coordenadas de textura da esfera, computadas com
-        // projeção esférica EM COORDENADAS DO MODELO. Utilize como referência
-        // o slide 144 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf".
-        // A esfera que define a projeção deve estar centrada na posição
-        // "bbox_center" definida abaixo.
+    // if ( object_id == SPHERE )
+    // {
+    //     // PREENCHA AQUI as coordenadas de textura da esfera, computadas com
+    //     // projeção esférica EM COORDENADAS DO MODELO. Utilize como referência
+    //     // o slide 144 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf".
+    //     // A esfera que define a projeção deve estar centrada na posição
+    //     // "bbox_center" definida abaixo.
 
-        // Você deve utilizar:
-        //   função 'length( )' : comprimento Euclidiano de um vetor
-        //   função 'atan( , )' : arcotangente. Veja https://en.wikipedia.org/wiki/Atan2.
-        //   função 'asin( )'   : seno inverso.
-        //   constante M_PI
-        //   variável position_model
+    //     // Você deve utilizar:
+    //     //   função 'length( )' : comprimento Euclidiano de um vetor
+    //     //   função 'atan( , )' : arcotangente. Veja https://en.wikipedia.org/wiki/Atan2.
+    //     //   função 'asin( )'   : seno inverso.
+    //     //   constante M_PI
+    //     //   variável position_model
 
-        vec4 bbox_center = (bbox_min + bbox_max) / 2.0;
+    //     vec4 bbox_center = (bbox_min + bbox_max) / 2.0;
 
-        U = 0.0;
-        V = 0.0;
-    }
-    else if ( object_id == BUNNY )
-    {
-        // PREENCHA AQUI as coordenadas de textura do coelho, computadas com
-        // projeção planar XY em COORDENADAS DO MODELO. Utilize como referência
-        // o slide 111 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf",
-        // e também use as variáveis min*/max* definidas abaixo para normalizar
-        // as coordenadas de textura U e V dentro do intervalo [0,1]. Para
-        // tanto, veja por exemplo o mapeamento da variável 'p_v' utilizando
-        // 'h' no slide 154 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf".
-        // Veja também a Questão 4 do Questionário 4 no Moodle.
+    //     U = 0.0;
+    //     V = 0.0;
+    // }
+    // else if ( object_id == BUNNY )
+    // {
+    //     // PREENCHA AQUI as coordenadas de textura do coelho, computadas com
+    //     // projeção planar XY em COORDENADAS DO MODELO. Utilize como referência
+    //     // o slide 111 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf",
+    //     // e também use as variáveis min*/max* definidas abaixo para normalizar
+    //     // as coordenadas de textura U e V dentro do intervalo [0,1]. Para
+    //     // tanto, veja por exemplo o mapeamento da variável 'p_v' utilizando
+    //     // 'h' no slide 154 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf".
+    //     // Veja também a Questão 4 do Questionário 4 no Moodle.
 
-        float minx = bbox_min.x;
-        float maxx = bbox_max.x;
+    //     float minx = bbox_min.x;
+    //     float maxx = bbox_max.x;
 
-        float miny = bbox_min.y;
-        float maxy = bbox_max.y;
+    //     float miny = bbox_min.y;
+    //     float maxy = bbox_max.y;
 
-        float minz = bbox_min.z;
-        float maxz = bbox_max.z;
+    //     float minz = bbox_min.z;
+    //     float maxz = bbox_max.z;
 
-        U = 0.0;
-        V = 0.0;
-    }
-    else if ( object_id == PLANE )
-    {
+    //     U = 0.0;
+    //     V = 0.0;
+    // }
+    // else if ( object_id == PLANE )
+    // {
+    //     // Coordenadas de textura do plano, obtidas do arquivo OBJ.
+    //     U = fract(p.z / 2);
+    //     V = fract(p.x / 2);
+    // }
+
+    vec4 Kd0 = vec4(0.5,0.5,0.5,0.5);
+
+    if ( object_id == PLANE ) {
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
-        U = fract(position_model.z*10);
-        V = fract(position_model.x*10);
+        U = fract(p.z / 2);
+        V = fract(p.x / 2);
+        Kd0 = texture(TextureImage2, vec2(U,V)).rgba;
+    } else if ( object_id == BOX ) {
+        U = 0.0f;
+        V = 0.0f;
+        Kd0 = texture(TextureImage0, vec2(U,V)).rgba;
+    } else if ( object_id == M4) {
+        U = texcoords.x;
+        V = texcoords.y;
+        Kd0 = texture(TextureM4, vec2(U,V)).rgba;
+    } else if ( object_id == FIRE) {
+        U = texcoords.x;
+        V = texcoords.y;
+        Kd0 = vec4(1.0,0.5,0.0,0.0);
     }
 
-    // Obtemos a refletância difusa a partir da leitura da imagem TextureImage0
-    vec3 Kd0 = texture(TextureImage2, vec2(U,V)).rgb;
-
-    // Equação de Iluminação
     float lambert = max(0,dot(n,l));
 
-    color = Kd0 * (lambert + 0.01);
+    if ( object_id == FIRE ) {
+        float lambert = 1.0f;
+    }
 
-    // Cor final com correção gamma, considerando monitor sRGB.
-    // Veja https://en.wikipedia.org/w/index.php?title=Gamma_correction&oldid=751281772#Windows.2C_Mac.2C_sRGB_and_TV.2Fvideo_standard_gammas
-    color = pow(color, vec3(1.0,1.0,1.0)/2.2);
+    color = Kd0 * (lambert + 0.01);
+    color = pow(color, vec4(1.0,1.0,1.0,1.0)/2.2);
 }
 

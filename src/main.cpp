@@ -264,10 +264,12 @@ bool s_hold = false;
 bool d_hold = false;
 bool mouse_enabled = false;
 bool created = false;
+bool shot = false;
 
 float norm2(glm::vec2 v);
 void createZombies(int n);
 void updateZombies();
+void updateBullets();
 
 #define SPHERE 0
 #define BUNNY  1
@@ -275,6 +277,76 @@ void updateZombies();
 #define BOX    3
 #define M4     4
 #define FIRE   5
+
+struct Bullet
+{
+    float x;
+    float y;
+    float z;
+    double last_update;
+    glm::vec3 direction;
+    float g_CameraPhi;
+    float g_CameraTheta;
+    bool collided;
+
+    Bullet(float xi, float yi, float zi, glm::vec4 view, float phi, float theta) {
+        x = xi;
+        y = yi;
+        z = zi;
+        last_update = glfwGetTime();
+        direction.x = view.x;
+        direction.y = view.y;
+        direction.z = view.z;
+        g_CameraPhi = phi;
+        g_CameraTheta = theta;
+        collided = false;
+    }
+
+    void Update() {
+        double now = glfwGetTime();
+        double time_diff = now - last_update;
+        last_update = now;
+        float bullet_speed = 1000.0;
+
+        x += bullet_speed * time_diff * direction.x;
+        y += bullet_speed * time_diff * direction.y;
+        z += bullet_speed * time_diff * direction.z;
+
+        draw();
+    }
+
+    void draw() {
+        glm::mat4 model = Matrix_Identity();
+        float tracer_offset_x = 0.1f;
+        float tracer_offset_y = 0.075f;
+        float tracer_offset_z = 0.2f;
+
+        float tracer_pos_x = x
+                            + direction.x * 300 * tracer_offset_z
+                            - direction.z * 100 * tracer_offset_x
+                            + tracer_offset_x * (1 - (cos(g_CameraPhi))) * cos(g_CameraTheta)
+                            - tracer_offset_y * sin(g_CameraPhi) * (-sin(g_CameraTheta));
+        float tracer_pos_y = y
+                            + direction.y * 300 * tracer_offset_z
+                            - tracer_offset_y * cos(g_CameraPhi);
+        float tracer_pos_z = z
+                            + direction.z * 300 * tracer_offset_z
+                            + direction.x * 100 * tracer_offset_x
+                            + tracer_offset_x * (1 - (cos(g_CameraPhi))) * (-sin(g_CameraTheta))
+                            - tracer_offset_y * sin(g_CameraPhi) * (-cos(g_CameraTheta));
+
+        model = Matrix_Translate(tracer_pos_x, tracer_pos_y, tracer_pos_z)
+              * Matrix_Rotate_Y(3.14 + g_CameraTheta - 1.57)
+              * Matrix_Rotate_Z(-g_CameraPhi + 1.57)
+              * Matrix_Rotate_Y(-0.05f)
+              * Matrix_Scale(0.01f, 0.5f, 0.01f)
+              ;
+        glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(object_id_uniform, FIRE);
+        DrawVirtualObject("box");
+    }
+};
+std::vector<Bullet> bullets;
 
 struct Zombie
 {
@@ -307,10 +379,10 @@ struct Zombie
             z += time_diff * direction.y;
         }
 
-        drawZombie();
+        draw();
     }
 
-    void drawZombie() {
+    void draw() {
         glm::mat4 model = Matrix_Identity();
         glm::vec2 direction = glm::vec2(dx, dz) - glm::vec2(x, z);
         float zombie_angle = 1.57 -atan2(direction.y, direction.x);
@@ -376,7 +448,6 @@ struct Zombie
         DrawVirtualObject("box");
     }
 };
-
 std::vector<Zombie> zombies;
 
 int main(int argc, char* argv[])
@@ -621,9 +692,19 @@ int main(int argc, char* argv[])
         float weapon_offset_x = 0.05;
         float weapon_offset_y = 0.15;
         float weapon_offset_z = 0.1;
-        float gun_pos_x = x + camera_view_vector.x * 100 * weapon_offset_z -camera_view_vector.z * 100 * weapon_offset_x + weapon_offset_x*(1-(cos(g_CameraPhi)))*cos(g_CameraTheta) -weapon_offset_y*sin(g_CameraPhi)*(-sin(g_CameraTheta));
-        float gun_pos_y = y + camera_view_vector.y * 100 * weapon_offset_z - weapon_offset_y * cos(g_CameraPhi);
-        float gun_pos_z = z + camera_view_vector.z * 100 * weapon_offset_z + camera_view_vector.x * 100 * weapon_offset_x + weapon_offset_x*(1-(cos(g_CameraPhi)))*(-sin(g_CameraTheta)) -weapon_offset_y*sin(g_CameraPhi)*(-cos(g_CameraTheta));
+        float gun_pos_x = x
+                        + camera_view_vector.x * 100 * weapon_offset_z
+                        - camera_view_vector.z * 100 * weapon_offset_x
+                        + weapon_offset_x * (1 - (cos(g_CameraPhi))) * cos(g_CameraTheta)
+                        - weapon_offset_y * sin(g_CameraPhi) * (-sin(g_CameraTheta));
+        float gun_pos_y = y
+                        + camera_view_vector.y * 100 * weapon_offset_z
+                        - weapon_offset_y * cos(g_CameraPhi);
+        float gun_pos_z = z
+                        + camera_view_vector.z * 100 * weapon_offset_z
+                        + camera_view_vector.x * 100 * weapon_offset_x
+                        + weapon_offset_x * (1 - (cos(g_CameraPhi))) * (-sin(g_CameraTheta))
+                        -weapon_offset_y * sin(g_CameraPhi) * (-cos(g_CameraTheta));
         model = Matrix_Translate(gun_pos_x, gun_pos_y, gun_pos_z)
               * Matrix_Scale(0.4f,0.4f,0.4f)
               * Matrix_Rotate_Y(3.14 + g_CameraTheta - 1.57)
@@ -641,25 +722,31 @@ int main(int argc, char* argv[])
 
         updateZombies();
 
-        if (g_LeftMouseButtonPressed) {
+        if (shot) {
+            shot = false;
+
             float tracer_offset_x = 0.1f;
             float tracer_offset_y = 0.075f;
             float tracer_offset_z = 0.2f;
 
-            float tracer_pos_x = x + camera_view_vector.x * 300 * tracer_offset_z -camera_view_vector.z * 100 * tracer_offset_x + tracer_offset_x*(1-(cos(g_CameraPhi)))*cos(g_CameraTheta) -tracer_offset_y*sin(g_CameraPhi)*(-sin(g_CameraTheta));
-            float tracer_pos_y = y + camera_view_vector.y * 300 * tracer_offset_z - tracer_offset_y * cos(g_CameraPhi);
-            float tracer_pos_z = z + camera_view_vector.z * 300 * tracer_offset_z + camera_view_vector.x * 100 * tracer_offset_x + tracer_offset_x*(1-(cos(g_CameraPhi)))*(-sin(g_CameraTheta)) -tracer_offset_y*sin(g_CameraPhi)*(-cos(g_CameraTheta));
+            float tracer_pos_x = x
+                               + camera_view_vector.x * 500 * tracer_offset_z
+                               - camera_view_vector.z * 100 * tracer_offset_x
+                               + tracer_offset_x * (1 - (cos(g_CameraPhi))) * cos(g_CameraTheta)
+                               - tracer_offset_y * sin(g_CameraPhi) * (-sin(g_CameraTheta));
+            float tracer_pos_y = y
+                               + camera_view_vector.y * 500 * tracer_offset_z
+                               - tracer_offset_y * cos(g_CameraPhi);
+            float tracer_pos_z = z
+                               + camera_view_vector.z * 500 * tracer_offset_z
+                               + camera_view_vector.x * 100 * tracer_offset_x
+                               + tracer_offset_x * (1 - (cos(g_CameraPhi))) * (-sin(g_CameraTheta))
+                               - tracer_offset_y * sin(g_CameraPhi) * (-cos(g_CameraTheta));
 
-            model = Matrix_Translate(tracer_pos_x, tracer_pos_y, tracer_pos_z)
-                  * Matrix_Rotate_Y(3.14 + g_CameraTheta - 1.57)
-                  * Matrix_Rotate_Z(-g_CameraPhi + 1.57)
-                  * Matrix_Rotate_Y(-0.05f)
-                  * Matrix_Scale(0.005f, 1.0f, 0.005f)
-                  ;
-            glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-            glUniform1i(object_id_uniform, FIRE);
-            DrawVirtualObject("box");
+            bullets.push_back(Bullet(tracer_pos_x, tracer_pos_y, tracer_pos_z, camera_view_vector, g_CameraPhi, g_CameraTheta));
         }
+
+        updateBullets();
 
         // Pegamos um vértice com coordenadas de modelo (0.5, 0.5, 0.5, 1) e o
         // passamos por todos os sistemas de coordenadas armazenados nas
@@ -1253,6 +1340,7 @@ void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
         // com o botão esquerdo pressionado.
         glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
         g_LeftMouseButtonPressed = true;
+        shot = true;
     }
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
     {
@@ -1798,5 +1886,11 @@ void createZombies(int n) {
 void updateZombies() {
     for (size_t i = 0; i < zombies.size(); i++) {
         zombies[i].Update();
+    }
+}
+
+void updateBullets() {
+    for (size_t i = 0; i < bullets.size(); i++) {
+        bullets[i].Update();
     }
 }

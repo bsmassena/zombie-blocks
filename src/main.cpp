@@ -235,6 +235,32 @@ bool line_intersects_quadrilateral(glm::vec4 line_point, glm::vec4 line_vector, 
     return is_inside_quadrilateral(vertex_a, vertex_b, vertex_c, vertex_d, intersection_point);
 }
 
+bool line_intersects_parallelepiped(glm::vec4 face1_v1, glm::vec4 face1_v2, glm::vec4 face1_v3, glm::vec4 face1_v4,
+                                    glm::vec4 face2_v1, glm::vec4 face2_v2, glm::vec4 face2_v3, glm::vec4 face2_v4,
+                                    glm::vec4 face3_v1, glm::vec4 face3_v2, glm::vec4 face3_v3, glm::vec4 face3_v4,
+                                    glm::vec4 face4_v1, glm::vec4 face4_v2, glm::vec4 face4_v3, glm::vec4 face4_v4,
+                                    glm::vec4 face5_v1, glm::vec4 face5_v2, glm::vec4 face5_v3, glm::vec4 face5_v4,
+                                    glm::vec4 face6_v1, glm::vec4 face6_v2, glm::vec4 face6_v3, glm::vec4 face6_v4,
+                                    glm::vec4 line_point, glm::vec4 line_vector) {
+    bool has_intersection = line_intersects_quadrilateral(line_point, line_vector, face1_v1, face1_v2, face1_v3, face1_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face2_v1, face2_v2, face2_v3, face2_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face3_v1, face3_v2, face3_v3, face3_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face4_v1, face4_v2, face4_v3, face4_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face5_v1, face5_v2, face5_v3, face5_v4);
+    if(has_intersection) return true;
+
+    has_intersection = line_intersects_quadrilateral(line_point, line_vector, face6_v1, face6_v2, face6_v3, face6_v4);
+    return has_intersection;
+}
+
 int main(int argc, char* argv[])
 {
     // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do

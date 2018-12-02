@@ -261,6 +261,29 @@ bool line_intersects_parallelepiped(glm::vec4 face1_v1, glm::vec4 face1_v2, glm:
     return has_intersection;
 }
 
+bool line_intersects_cilider(glm::vec4 line_point, glm::vec4 line_vector, glm::vec4 cilinter_point, float cilinder_radius, float cilinter_height) {
+    // Really long expression broke into smaller parts
+    float part1 = pow(cilinder_radius, 2) * (pow(line_vector.x, 2) + pow(line_vector.z, 2));
+    float part2 = line_vector.x * (cilinter_point.z - line_point.z);
+    float part3 = line_vector.z * (cilinter_point.x - line_point.x);
+    float part4 = pow(part2 - part3, 2);
+    float delta = part1 - part4;
+
+    if(delta < 0) return false;
+
+    float part5 = line_vector.x * (cilinter_point.x - line_point.x);
+    float part6 = line_vector.z * (cilinter_point.z - line_point.z);
+    float part7 = pow(line_vector.x, 2) + pow(line_vector.z, 2);
+
+    float t1 = (part5 + part6 + delta) / part7;
+    glm::vec4 intersection = line_point + t1 * line_vector;
+    if(intersection.y <= cilinter_point.y + cilinter_height) return true;
+
+    float t2 = (part5 + part6 - delta) / part7;
+    intersection = line_point + t2 * line_vector;
+    return intersection.y <= cilinter_point.y + cilinter_height;
+}
+
 int main(int argc, char* argv[])
 {
     // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do

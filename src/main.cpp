@@ -285,7 +285,7 @@ bool w_hold = false;
 bool a_hold = false;
 bool s_hold = false;
 bool d_hold = false;
-bool mouse_enabled = false;
+bool paused = false;
 bool created = false;
 bool shot = false;
 
@@ -293,6 +293,8 @@ float norm2(glm::vec2 v);
 void createZombies(int n);
 void updateZombies();
 void updateBullets();
+void testBulletZombieCollision();
+glm::vec4 bezier (glm::vec4 p1, glm::vec4 p2, glm::vec4 p3, glm::vec4 p4, float t);
 
 #define SPHERE 0
 #define BUNNY  1
@@ -310,7 +312,7 @@ struct Bullet
     glm::vec3 direction;
     float g_CameraPhi;
     float g_CameraTheta;
-    bool collided;
+    bool active;
 
     Bullet(float xi, float yi, float zi, glm::vec4 view, float phi, float theta) {
         x = xi;
@@ -322,47 +324,35 @@ struct Bullet
         direction.z = view.z;
         g_CameraPhi = phi;
         g_CameraTheta = theta;
-        collided = false;
+        active = true;
     }
 
     void Update() {
         double now = glfwGetTime();
         double time_diff = now - last_update;
         last_update = now;
-        float bullet_speed = 1000.0;
+        float bullet_speed = 10000.0;
 
-        x += bullet_speed * time_diff * direction.x;
-        y += bullet_speed * time_diff * direction.y;
-        z += bullet_speed * time_diff * direction.z;
+        if (!paused) {
+            x += bullet_speed * time_diff * direction.x;
+            y += bullet_speed * time_diff * direction.y;
+            z += bullet_speed * time_diff * direction.z;
+        }
+
+        if (abs(x) > 20.0f || abs(y) > 20.0f || abs(z) > 20.0f)
+            active = false;
 
         draw();
     }
 
     void draw() {
         glm::mat4 model = Matrix_Identity();
-        float tracer_offset_x = 0.1f;
-        float tracer_offset_y = 0.075f;
-        float tracer_offset_z = 0.2f;
 
-        float tracer_pos_x = x
-                            + direction.x * 300 * tracer_offset_z
-                            - direction.z * 100 * tracer_offset_x
-                            + tracer_offset_x * (1 - (cos(g_CameraPhi))) * cos(g_CameraTheta)
-                            - tracer_offset_y * sin(g_CameraPhi) * (-sin(g_CameraTheta));
-        float tracer_pos_y = y
-                            + direction.y * 300 * tracer_offset_z
-                            - tracer_offset_y * cos(g_CameraPhi);
-        float tracer_pos_z = z
-                            + direction.z * 300 * tracer_offset_z
-                            + direction.x * 100 * tracer_offset_x
-                            + tracer_offset_x * (1 - (cos(g_CameraPhi))) * (-sin(g_CameraTheta))
-                            - tracer_offset_y * sin(g_CameraPhi) * (-cos(g_CameraTheta));
-
-        model = Matrix_Translate(tracer_pos_x, tracer_pos_y, tracer_pos_z)
+        model = Matrix_Translate(x, y, z)
               * Matrix_Rotate_Y(3.14 + g_CameraTheta - 1.57)
               * Matrix_Rotate_Z(-g_CameraPhi + 1.57)
               * Matrix_Rotate_Y(-0.05f)
-              * Matrix_Scale(0.01f, 0.5f, 0.01f)
+              * Matrix_Scale(0.015f, 0.5f, 0.015f)
               ;
         glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(object_id_uniform, FIRE);
@@ -377,7 +367,13 @@ struct Zombie
     float z;
     float angle;
     double last_update;
+    bool alive;
     glm::vec2 direction;
+
+    glm::vec3 head_scale = glm::vec3(0.6f, 0.6f, 0.6f);
+    glm::vec3 body_scale = glm::vec3(0.5f, 0.8f, 0.35f);
+    glm::vec3 arm_scale = glm::vec3(0.2f, 0.2f, 1.4f);
+    glm::vec3 leg_scale = glm::vec3(0.2f, 1.0f, 0.2f);
 
     Zombie(float xi, float yi) {
         x = xi;
@@ -385,8 +381,87 @@ struct Zombie
         last_update = glfwGetTime();
         direction = glm::vec2(dx, dz) - glm::vec2(x, z);
         direction = direction / norm2(direction);
-        angle = 1.57 -atan2(direction.y, direction.x);
+        angle = 1.57 - atan2(direction.y, direction.x);
+        alive = true;
     }
+
+    float getBodyHeight() {
+        float box_size = 0.5f;
+        return (leg_scale.y + body_scale.y) * box_size;
+    }
+
+    glm::vec4 getP1() {
+        float px, py, pz, box_size = 0.5f;
+        px = x - box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y + head_scale.y) - 1.1f;
+        pz = z + box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP2() {
+        float px, py, pz, box_size = 0.5f;
+        px = x + box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y + head_scale.y) - 1.1f;
+        pz = z + box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP3() {
+        float px, py, pz, box_size = 0.5f;
+        px = x + box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y + head_scale.y) - 1.1f;
+        pz = z - box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP4() {
+        float px, py, pz, box_size = 0.5f;
+        px = x - box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y + head_scale.y) - 1.1f;
+        pz = z - box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP5() {
+        float px, py, pz, box_size = 0.5f;
+        px = x - box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y) - 1.1f;
+        pz = z + box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP6() {
+        float px, py, pz, box_size = 0.5f;
+        px = x + box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y) - 1.1f;
+        pz = z + box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP7() {
+        float px, py, pz, box_size = 0.5f;
+        px = x + box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y) - 1.1f;
+        pz = z - box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
+    glm::vec4 getP8() {
+        float px, py, pz, box_size = 0.5f;
+        px = x - box_size * (head_scale.x / 2);
+        py = box_size * (leg_scale.y + body_scale.y) - 1.1f;
+        pz = z - box_size * (head_scale.z / 2);
+
+        return glm::vec4(px, py, pz, 1.0f);
+    }
+
 
     void Update() {
         direction = glm::vec2(dx, dz) - glm::vec2(x, z);
@@ -397,7 +472,7 @@ struct Zombie
         double time_diff = now - last_update;
         last_update = now;
 
-        if (distance > 1.0) {
+        if (distance > 1.0 && !paused) {
             x += time_diff * direction.x;
             z += time_diff * direction.y;
         }
@@ -408,15 +483,10 @@ struct Zombie
     void draw() {
         glm::mat4 model = Matrix_Identity();
         glm::vec2 direction = glm::vec2(dx, dz) - glm::vec2(x, z);
-        float zombie_angle = 1.57 -atan2(direction.y, direction.x);
+        float zombie_angle = 1.57 - atan2(direction.y, direction.x);
 
         float box_size = 0.5f;
         float floor_height = -1.1f;
-
-        glm::vec3 head_scale = glm::vec3(0.6f, 0.6f, 0.6f);
-        glm::vec3 body_scale = glm::vec3(0.5f, 0.8f, 0.35f);
-        glm::vec3 arm_scale = glm::vec3(0.2f, 1.0f, 0.2f);
-        glm::vec3 leg_scale = glm::vec3(0.2f, 1.0f, 0.2f);
 
         // Pernas
         model = Matrix_Translate(x + sin(1.57-zombie_angle) * box_size * (leg_scale.x/2 + 0.01), box_size * leg_scale.y/2 + floor_height, z - cos(1.57-zombie_angle) * box_size * (leg_scale.x/2 + 0.01))
@@ -445,17 +515,21 @@ struct Zombie
         DrawVirtualObject("box");
 
         // Braços
-        model = Matrix_Translate(x + sin(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2), box_size * (leg_scale.y + body_scale.y - arm_scale.y/2) + floor_height, -cos(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2) + z)
-            * Matrix_Scale(arm_scale.x, arm_scale.y, arm_scale.z)
+        model = Matrix_Translate(x + sin(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2),
+                                 box_size * (leg_scale.y + body_scale.y - arm_scale.y/2) + floor_height,
+                                 -cos(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2) + z)
             * Matrix_Rotate_Y(zombie_angle)
+            * Matrix_Scale(arm_scale.x, arm_scale.y, arm_scale.z)
             ;
         glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(object_id_uniform, BOX);
         DrawVirtualObject("box");
 
-        model = Matrix_Translate(x - sin(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2), box_size * (leg_scale.y + body_scale.y - arm_scale.y/2) + floor_height, cos(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2) + z)
-            * Matrix_Scale(arm_scale.x, arm_scale.y, arm_scale.z)
+        model = Matrix_Translate(x - sin(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2),
+                                 box_size * (leg_scale.y + body_scale.y - arm_scale.y/2) + floor_height,
+                                 cos(1.57-zombie_angle) * box_size * (body_scale.x/2 + arm_scale.x/2) + z)
             * Matrix_Rotate_Y(zombie_angle)
+            * Matrix_Scale(arm_scale.x, arm_scale.y, arm_scale.z)
             ;
         glUniformMatrix4fv(model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(object_id_uniform, BOX);
@@ -623,26 +697,28 @@ int main(int argc, char* argv[])
         glUseProgram(program_id);
 
         // Free cam
-        if (w_hold) { // Ok
-            dz -= 0.03f*cos(g_CameraTheta);
-            dx -= 0.03f*sin(g_CameraTheta);
-            // dy -= 0.03f*sin(g_CameraPhi);
-        }
+        if (!paused) {
+            if (w_hold) { // Ok
+                dz -= 0.03f*cos(g_CameraTheta);
+                dx -= 0.03f*sin(g_CameraTheta);
+                // dy -= 0.03f*sin(g_CameraPhi);
+            }
 
-        if (a_hold) { // Ok
-            dx -= 0.03f*cos(g_CameraTheta);
-            dz += 0.03f*sin(g_CameraTheta);
-        }
+            if (a_hold) { // Ok
+                dx -= 0.03f*cos(g_CameraTheta);
+                dz += 0.03f*sin(g_CameraTheta);
+            }
 
-        if (s_hold) { // Ok
-            dz += 0.03f*cos(g_CameraTheta);
-            dx += 0.03f*sin(g_CameraTheta);
-            // dy += 0.03f*sin(g_CameraPhi);
-        }
+            if (s_hold) { // Ok
+                dz += 0.03f*cos(g_CameraTheta);
+                dx += 0.03f*sin(g_CameraTheta);
+                // dy += 0.03f*sin(g_CameraPhi);
+            }
 
-        if (d_hold) { // Ok
-            dx += 0.03f*cos(g_CameraTheta);
-            dz -= 0.03f*sin(g_CameraTheta);
+            if (d_hold) { // Ok
+                dx += 0.03f*cos(g_CameraTheta);
+                dz -= 0.03f*sin(g_CameraTheta);
+            }
         }
 
         // Computamos a posição da câmera utilizando coordenadas esféricas.  As
@@ -662,6 +738,17 @@ int main(int argc, char* argv[])
         glm::vec4 camera_lookat_l    = glm::vec4(dx,dy,dz,1.0f); // Ponto "l", para onde a câmera (look-at) estará sempre olhando
         glm::vec4 camera_view_vector = camera_lookat_l - camera_position_c; // Vetor "view", sentido para onde a câmera está virada
         glm::vec4 camera_up_vector   = glm::vec4(0.0f,1.0f,0.0f,0.0f); // Vetor "up" fixado para apontar para o "céu" (eito Y global)
+
+        if (paused) {
+            glm::vec4 p1 = glm::vec4( 0.0f, 20.0f,  45.0f, 1.0f);
+            glm::vec4 p2 = glm::vec4(45.0f, 20.0f,  45.0f, 1.0f);
+            glm::vec4 p3 = glm::vec4(45.0f, 20.0f, -45.0f, 1.0f);
+            glm::vec4 p4 = glm::vec4( 0.0f, 20.0f, -45.0f, 1.0f);
+            camera_position_c  = bezier(p1, p2, p3, p4, (cos(glfwGetTime()/4) + 1.0f)/2); // Ponto "c", centro da câmera
+            camera_lookat_l    = glm::vec4(0.0f, 0.0f, 0.0f ,1.0f); // Ponto "l", para onde a câmera (look-at) estará sempre olhando
+            camera_view_vector = camera_lookat_l - camera_position_c; // Vetor "view", sentido para onde a câmera está virada
+            camera_up_vector   = glm::vec4(0.0f,1.0f,0.0f,0.0f); // Vetor "up" fixado para apontar para o "céu" (eito Y global)
+        }
 
         // Computamos a matriz "View" utilizando os parâmetros da câmera para
         // definir o sistema de coordenadas da câmera.  Veja slide 186 do documento "Aula_08_Sistemas_de_Coordenadas.pdf".
@@ -738,38 +825,43 @@ int main(int argc, char* argv[])
         glUniform1i(object_id_uniform, M4);
         DrawVirtualObject("Bolt_Cylinder.002");
 
-        if (!created) {
-            createZombies(10);
-            created = true;
-        }
+        if (!paused) {
 
+            if (!created) {
+                createZombies(10);
+                created = true;
+            }
+
+            if (shot) {
+                shot = false;
+
+                float tracer_offset_x = 0.1f;
+                float tracer_offset_y = 0.075f;
+                float tracer_offset_z = 0.2f;
+
+                float tracer_pos_x = x
+                                + camera_view_vector.x * 300 * tracer_offset_z
+                                - camera_view_vector.z * 100 * tracer_offset_x
+                                + tracer_offset_x * (1 - (cos(g_CameraPhi))) * cos(g_CameraTheta)
+                                - tracer_offset_y * sin(g_CameraPhi) * (-sin(g_CameraTheta));
+                float tracer_pos_y = y
+                                + camera_view_vector.y * 300 * tracer_offset_z
+                                - tracer_offset_y * cos(g_CameraPhi);
+                float tracer_pos_z = z
+                                + camera_view_vector.z * 300 * tracer_offset_z
+                                + camera_view_vector.x * 100 * tracer_offset_x
+                                + tracer_offset_x * (1 - (cos(g_CameraPhi))) * (-sin(g_CameraTheta))
+                                - tracer_offset_y * sin(g_CameraPhi) * (-cos(g_CameraTheta));
+
+                bullets.push_back(Bullet(tracer_pos_x, tracer_pos_y, tracer_pos_z, camera_view_vector, g_CameraPhi, g_CameraTheta));
+            }
+
+            testBulletZombieCollision();
+        }
+        updateBullets();
         updateZombies();
 
-        if (shot) {
-            shot = false;
-
-            float tracer_offset_x = 0.1f;
-            float tracer_offset_y = 0.075f;
-            float tracer_offset_z = 0.2f;
-
-            float tracer_pos_x = x
-                               + camera_view_vector.x * 500 * tracer_offset_z
-                               - camera_view_vector.z * 100 * tracer_offset_x
-                               + tracer_offset_x * (1 - (cos(g_CameraPhi))) * cos(g_CameraTheta)
-                               - tracer_offset_y * sin(g_CameraPhi) * (-sin(g_CameraTheta));
-            float tracer_pos_y = y
-                               + camera_view_vector.y * 500 * tracer_offset_z
-                               - tracer_offset_y * cos(g_CameraPhi);
-            float tracer_pos_z = z
-                               + camera_view_vector.z * 500 * tracer_offset_z
-                               + camera_view_vector.x * 100 * tracer_offset_x
-                               + tracer_offset_x * (1 - (cos(g_CameraPhi))) * (-sin(g_CameraTheta))
-                               - tracer_offset_y * sin(g_CameraPhi) * (-cos(g_CameraTheta));
-
-            bullets.push_back(Bullet(tracer_pos_x, tracer_pos_y, tracer_pos_z, camera_view_vector, g_CameraPhi, g_CameraTheta));
-        }
-
-        updateBullets();
+        printf("%.2f, %.2f\n", x, z);
 
         // Pegamos um vértice com coordenadas de modelo (0.5, 0.5, 0.5, 1) e o
         // passamos por todos os sistemas de coordenadas armazenados nas
@@ -1419,7 +1511,7 @@ void CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
     float dx = xpos - g_LastCursorPosX;
     float dy = ypos - g_LastCursorPosY;
 
-    if (mouse_enabled == false) {
+    if (paused == false) {
         // Atualizamos parâmetros da câmera com os deslocamentos
         g_CameraTheta -= 0.005f*dx;
         g_CameraPhi   += 0.005f*dy;
@@ -1506,12 +1598,12 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     // Se o usuário pressionar a tecla ESC, fechamos a janela.
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         // glfwSetWindowShouldClose(window, GL_TRUE);
-        if (mouse_enabled) {
+        if (paused) {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            mouse_enabled = false;
+            paused = false;
         } else {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            mouse_enabled = true;
+            paused = true;
         }
 
 
@@ -1908,12 +2000,63 @@ void createZombies(int n) {
 
 void updateZombies() {
     for (size_t i = 0; i < zombies.size(); i++) {
-        zombies[i].Update();
+        if (zombies[i].alive)
+            zombies[i].Update();
     }
 }
 
 void updateBullets() {
     for (size_t i = 0; i < bullets.size(); i++) {
-        bullets[i].Update();
+        if (bullets[i].active)
+            bullets[i].Update();
     }
+}
+
+void testBulletZombieCollision() {
+    glm::vec4 p1, p2, p3, p4, p5, p6, p7, p8, line_point, line_vec, zombie_pos;
+    for (size_t i = 0; i < bullets.size(); i++) {
+        for (size_t j = 0; j < zombies.size(); j++) {
+            if (zombies[j].alive && bullets[i].active) {
+                p1 = zombies[j].getP1();
+                p2 = zombies[j].getP2();
+                p3 = zombies[j].getP3();
+                p4 = zombies[j].getP4();
+                p5 = zombies[j].getP5();
+                p6 = zombies[j].getP6();
+                p7 = zombies[j].getP7();
+                p8 = zombies[j].getP8();
+
+                line_point = glm::vec4(bullets[i].x, bullets[i].y, bullets[i].z, 1.0f);
+                line_vec = glm::vec4(bullets[i].direction.x, bullets[i].direction.y, bullets[i].direction.z, 0.0f);
+
+                zombie_pos = glm::vec4(zombies[j].x, -1.1f, zombies[j].z, 1.0f);
+
+                if(line_intersects_parallelepiped(p1, p2, p3, p4,
+                                                  p4, p3, p7, p8,
+                                                  p3, p2, p6, p7,
+                                                  p1, p2, p6, p5,
+                                                  p1, p4, p8, p5,
+                                                  p5, p6, p7, p8,
+                                                  line_point, line_vec)
+                || line_intersects_cilider(line_point, line_vec, zombie_pos, 0.3f, zombies[j].getBodyHeight())) {
+                                                      zombies[j].alive = false;
+                                                  }
+            }
+        }
+    }
+}
+
+glm::vec4 bezier (glm::vec4 p1, glm::vec4 p2, glm::vec4 p3, glm::vec4 p4, float t) {
+    glm::vec4 c12, c23, c34, c123, c234, c1234, ct;
+
+    c12 = p1 + t * (p2 - p1);
+    c23 = p2 + t * (p3 - p2);
+    c34 = p3 + t * (p4 - p3);
+
+    c123 = c12 + t * (c23 - c12);
+    c234 = c23 + t * (c34 - c23);
+
+    ct = c123 + t * (c234 - c123);
+
+    return ct;
 }

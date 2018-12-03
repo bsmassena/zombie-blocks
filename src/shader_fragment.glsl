@@ -2,8 +2,8 @@
 
 // Atributos de fragmentos recebidos como entrada ("in") pelo Fragment Shader.
 // Neste exemplo, este atributo foi gerado pelo rasterizador como a
-// interpolação da posição global e a normal de cada vértice, definidas em
-// "shader_vertex.glsl" e "main.cpp".
+// interpolação da cor de cada vértice, definidas em "shader_vertex.glsl" e
+// "main.cpp".
 in vec4 position_world;
 in vec4 normal;
 
@@ -12,6 +12,9 @@ in vec4 position_model;
 
 // Coordenadas de textura obtidas do arquivo OBJ (se existirem!)
 in vec2 texcoords;
+
+in float lambert_vertex;
+in float phong_vertex;
 
 // Matrizes computadas no código C++ e enviadas para a GPU
 uniform mat4 model;
@@ -28,6 +31,7 @@ uniform mat4 projection;
 #define WALL   6
 uniform int object_id;
 
+
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
 uniform vec4 bbox_min;
 uniform vec4 bbox_max;
@@ -40,19 +44,34 @@ uniform sampler2D TextureM4;
 uniform sampler2D TextureFire;
 uniform sampler2D TextureWall;
 
+
+uniform vec4 camera_position;
+// Atributos uteis a lanterna
+uniform vec4 camera_view_vector;
+
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
-out vec4 color;
+out vec3 color;
 
 // Constantes
 #define M_PI   3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
 
+
 void main()
 {
+
     // Obtemos a posição da câmera utilizando a inversa da matriz que define o
     // sistema de coordenadas da câmera.
     vec4 origin = vec4(0.0, 0.0, 0.0, 1.0);
+    // vec4 camera_position = inverse(view) * origin;
     vec4 camera_position = inverse(view) * origin;
+
+    float spotlight_inner_angle = radians(45.0);
+    float spotlight_outer_angle = radians(50.0);
+
+    vec4 spotlight_position = vec4(0.0, 1.0, 0.0, 1.0);
+    vec4 spotlight_orientation = vec4(0.0, -1.0, 0.0, 0.0);
+
 
     // O fragmento atual é coberto por um ponto que percente à superfície de um
     // dos objetos virtuais da cena. Este ponto, p, possui uma posição no
@@ -66,85 +85,67 @@ void main()
     vec4 n = normalize(normal);
 
     // Vetor que define o sentido da fonte de luz em relação ao ponto atual.
-    vec4 l = normalize(vec4(1.0,1.0,0.0,0.0));
+    vec4 l = normalize((spotlight_position - p) - spotlight_orientation);
 
     // Vetor que define o sentido da câmera em relação ao ponto atual.
     vec4 v = normalize(camera_position - p);
+
+    // Vetor que define o sentido da reflexão especular ideal.
+    vec4 r = -l + 2*n*dot(n, l);
+
+    // Parâmetros que definem as propriedades espectrais da superfície
+    vec3 Kd;  // Refletância difusa
+    vec3 Ks;  // Refletância especular
+    vec3 Ka;  // Refletância ambiente
+    vec3 Kd0; // Refletância difusa
+    float q;  // Expoente especular para o modelo de iluminação de Phong
+    float q_; // Expoente especular para o modelo de iluminação de Blinn Phong
 
     // Coordenadas de textura U e V
     float U = 0.0;
     float V = 0.0;
 
-    // if ( object_id == SPHERE )
-    // {
-    //     // PREENCHA AQUI as coordenadas de textura da esfera, computadas com
-    //     // projeção esférica EM COORDENADAS DO MODELO. Utilize como referência
-    //     // o slide 144 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf".
-    //     // A esfera que define a projeção deve estar centrada na posição
-    //     // "bbox_center" definida abaixo.
+    bool useBlinnPhong = false;
+    bool useGouradShading = false;
 
-    //     // Você deve utilizar:
-    //     //   função 'length( )' : comprimento Euclidiano de um vetor
-    //     //   função 'atan( , )' : arcotangente. Veja https://en.wikipedia.org/wiki/Atan2.
-    //     //   função 'asin( )'   : seno inverso.
-    //     //   constante M_PI
-    //     //   variável position_model
-
-    //     vec4 bbox_center = (bbox_min + bbox_max) / 2.0;
-
-    //     U = 0.0;
-    //     V = 0.0;
-    // }
-    // else if ( object_id == BUNNY )
-    // {
-    //     // PREENCHA AQUI as coordenadas de textura do coelho, computadas com
-    //     // projeção planar XY em COORDENADAS DO MODELO. Utilize como referência
-    //     // o slide 111 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf",
-    //     // e também use as variáveis min*/max* definidas abaixo para normalizar
-    //     // as coordenadas de textura U e V dentro do intervalo [0,1]. Para
-    //     // tanto, veja por exemplo o mapeamento da variável 'p_v' utilizando
-    //     // 'h' no slide 154 do documento "Aula_20_e_21_Mapeamento_de_Texturas.pdf".
-    //     // Veja também a Questão 4 do Questionário 4 no Moodle.
-
-    //     float minx = bbox_min.x;
-    //     float maxx = bbox_max.x;
-
-    //     float miny = bbox_min.y;
-    //     float maxy = bbox_max.y;
-
-    //     float minz = bbox_min.z;
-    //     float maxz = bbox_max.z;
-
-    //     U = 0.0;
-    //     V = 0.0;
-    // }
-    // else if ( object_id == PLANE )
-    // {
-    //     // Coordenadas de textura do plano, obtidas do arquivo OBJ.
-    //     U = fract(p.z / 2);
-    //     V = fract(p.x / 2);
-    // }
-
-    vec4 Kd0 = vec4(0.5,0.5,0.5,0.5);
-
-    if ( object_id == PLANE ) {
-        // Coordenadas de textura do plano, obtidas do arquivo OBJ.
+    if ( object_id == PLANE )
+    {
         U = fract(p.z / 2);
         V = fract(p.x / 2);
-        Kd0 = texture(TextureImage1, vec2(U,V)).rgba;
-    } else if ( object_id == BOX ) {
-        U = 0.0f;
-        V = 0.0f;
-        Kd0 = texture(TextureImage0, vec2(U,V)).rgba;
-    } else if ( object_id == M4) {
+
+        // Propriedades espectrais do plano
+        Kd = texture(TextureImage1, vec2(U,V)).rgb;
+        Ks = vec3(0.0,0.0,0.0);
+        Ka = Kd/10;
+        q = 1.0;
+
+    }
+    else if ( object_id == BOX )
+    {
+        useGouradShading = true;
+
+        // Propriedades espectrais do zumbi
+        Kd = vec3(0.5,0.5,0.5);
+        Ks = vec3(0.3, 0.3, 0.3);
+        Ka = Kd/100;
+        q = 20.0;
+    }
+    else if ( object_id == M4 )
+    {
+        useBlinnPhong = true;
+
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureM4, vec2(U,V)).rgba;
-    } else if ( object_id == FIRE) {
-        U = texcoords.x;
-        V = texcoords.y;
-        Kd0 = vec4(1.0,0.5,0.0,0.0);
-    } else if ( object_id == WALL) {
+
+        // Propriedades espectrais da arma
+        Kd = texture(TextureM4, vec2(U,V)).rgb;
+        Ks = vec3(0.3, 0.3, 0.3);
+        Ka = Kd/10;
+        q = 20.0;
+        q_ = 15.0;
+    }
+    else if ( object_id == WALL )
+    {
         if (p.z >= 20.0f || p.z <= -20.0f) {
             U = fract(p.x / 2);
             V = fract(p.y / 2);
@@ -152,16 +153,72 @@ void main()
             U = fract(p.z / 2);
             V = fract(p.y / 2);
         }
-        Kd0 = texture(TextureImage2, vec2(U,V)).rgba;
-    } 
 
-    float lambert = max(0,dot(n,l));
-
-    if ( object_id == FIRE ) {
-        float lambert = 1.0f;
+        // Propriedades espectrais da parede
+        Kd = texture(TextureImage2, vec2(U,V)).rgb;
+        Ks = vec3(0.3, 0.3, 0.3);
+        Ka = Kd/10;
+        q = 1.0;
+    }
+    else if ( object_id == FIRE )
+    {
+        // Propriedades espectrais do coelho
+        Kd = vec3(1.0,0.5,0.0);
+        Ks = vec3 (0.8, 0.8, 0.8);
+        Ka = Kd;
+        q  = 5.0;
     }
 
-    color = Kd0 * (lambert + 0.01);
-    color = pow(color, vec4(1.0,1.0,1.0,1.0)/2.2);
-}
 
+    // Espectro da fonte de iluminação
+    vec3 I = vec3(1.0, 1.0, 1.0); // PREENCHA AQUI o espectro da fonte de luz
+
+    // Espectro da luz ambiente
+    vec3 Ia = vec3 (0.6, 0.6, 0.6); // PREENCHA AQUI o espectro da luz ambiente
+
+
+    // Termo difuso utilizando a lei dos cossenos de Lambert
+    vec3 lambert_diffuse_term = Kd*I*max(0, dot(l, n)); // PREENCHA AQUI o termo difuso de Lambert
+    vec3 lambert_diffuse_term_gourad_shading = Kd*I*lambert_vertex;
+
+    // Termo ambiente
+    vec3 ambient_term = Ka*Ia; // PREENCHA AQUI o termo ambiente
+
+    // Termo especular utilizando o modelo de iluminação de Phong
+    vec3 phong_specular_term  = Ks*I*pow(max(0, dot(r, v)), q); // PREENCH AQUI o termo especular de Phong
+    vec3 phong_specular_term_gourad_shading = Ks*I*pow(phong_vertex, q);
+
+    vec4 h = (v + l)/length(v + l);
+    vec3 blinn_phong_specular_term = Ks*I*pow(max(0, dot(n, h)), q_);
+
+    // Angulo atual do raio de luz da lanterna em relacao a um vetor central
+    float theta = dot(normalize(p-spotlight_position), normalize(spotlight_orientation));
+
+    // Computa atenuacao a ser usada
+    float distance_to_light = length(spotlight_position - position_world);
+    float attenuation_factor = 0.3f;
+    float attenuation = 1.0f / (1.0f + (attenuation_factor * pow(distance_to_light, 2)));
+
+    // Computa graduacao da intensidade da lanterna
+    float epsilon = spotlight_outer_angle - spotlight_inner_angle;
+    float intensity = clamp( (theta - spotlight_outer_angle) / epsilon, 0.0f, 1.0f);
+
+
+
+    // Spotlight test
+    if(theta > cos(spotlight_outer_angle)){
+        if (useBlinnPhong)
+            phong_specular_term = blinn_phong_specular_term;
+        if (useGouradShading) {
+            lambert_diffuse_term = lambert_diffuse_term_gourad_shading;
+            phong_specular_term  = phong_specular_term_gourad_shading;
+        }
+        color =  10 * attenuation * intensity *(lambert_diffuse_term + phong_specular_term) + ambient_term;
+    } else {
+        color = ambient_term;
+    }
+
+    // Cor final com correção gamma, considerando monitor sRGB.
+    // Veja https://en.wikipedia.org/w/index.php?title=Gamma_correction&oldid=751281772#Windows.2C_Mac.2C_sRGB_and_TV.2Fvideo_standard_gammas
+    color = pow(color, vec3(1.0,1.0,1.0)/2.2);
+}

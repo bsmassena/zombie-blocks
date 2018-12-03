@@ -193,6 +193,8 @@ GLint projection_uniform;
 GLint object_id_uniform;
 GLint bbox_min_uniform;
 GLint bbox_max_uniform;
+GLint camera_position_uniform;
+GLint camera_view_vector_uniform;
 
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
@@ -606,7 +608,7 @@ int main(int argc, char* argv[])
     // Criamos uma janela do sistema operacional, com 800 colunas e 600 linhas
     // de pixels, e com título "INF01047 ...".
     GLFWwindow* window;
-    window = glfwCreateWindow(800, 600, "INF01047 - Seu Cartao - Seu Nome", NULL, NULL);
+    window = glfwCreateWindow(800, 600, "Zombie Blocks", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
@@ -837,6 +839,8 @@ int main(int argc, char* argv[])
         // efetivamente aplicadas em todos os pontos.
         glUniformMatrix4fv(view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
         glUniformMatrix4fv(projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
+        glUniformMatrix4fv(camera_view_vector_uniform , 1 , GL_FALSE , glm::value_ptr(camera_view_vector/norm(camera_view_vector)));
+        glUniformMatrix4fv(camera_position_uniform , 1 , GL_FALSE , glm::value_ptr(camera_position_c));
 
         // Desenhamos o plano do chão
         model = Matrix_Translate(0.0f,-1.1f,0.0f)
@@ -908,7 +912,6 @@ int main(int argc, char* argv[])
             if (now - last_zombie_created - create_interval > 0) {
                 createZombie();
                 last_zombie_created = now;
-                create_interval *= 0.95;
             }
 
             if (shot) {
